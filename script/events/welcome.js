@@ -74,7 +74,7 @@ async function getUserGender(api, userID) {
     }
 }
 
-module.exports.handleEvent = async function ({ api, event }) {
+module.exports.run = async function ({ api, event }) {
     if (event.logMessageType !== "log:subscribe") return;
     const addedParticipants = event.logMessageData?.addedParticipants;
     if (!addedParticipants?.length) return;
