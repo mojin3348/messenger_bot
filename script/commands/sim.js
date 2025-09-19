@@ -5,14 +5,16 @@ const key = "a650beda66094d58b3e5c84b664420e8f2e65edd";
 let lastBotReplies = new Set();
 
 module.exports.config = {
-    name: "sim",
-    version: "1.1.0",
-    hasPermission: 0,
-    credits: "Ari (Safe Auto-Reply)",
-    description: "Simsimi chat mode (command + safe auto-reply)",
-    category: "fun",
-    usages: "[message]",
-    cooldowns: 1
+  name: "sim", 
+  version: "1.0.0", 
+  permission: 0,
+  credits: "Ari", 
+  description: "auto reply sim simi", 
+  prefix: false, 
+  premium: false,
+  category: "fun", 
+  usages: "chat with sim simi",
+  cooldowns: 5 
 };
 
 async function sendSimSimi(api, event, text) {
@@ -33,7 +35,6 @@ async function sendSimSimi(api, event, text) {
     }
 }
 
-// Command mode
 module.exports.run = async function ({ api, event, args }) {
     const q = args.join(" ");
     if (!q) return api.sendMessage("Ano?", event.threadID, event.messageID);
