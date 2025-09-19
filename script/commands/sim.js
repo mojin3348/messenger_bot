@@ -10,7 +10,7 @@ module.exports.config = {
     hasPermission: 0,
     credits: "Ari (Safe Auto-Reply)",
     description: "Simsimi chat mode (command + safe auto-reply)",
-    commandCategory: "fun",
+    category: "fun",
     usages: "[message]",
     cooldowns: 1
 };
