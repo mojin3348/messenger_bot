@@ -15,7 +15,7 @@ module.exports.config = {
 	name: "join",
 	eventType: ["log:subscribe"],
 	version: "2.2.0",
-	credits: "ryuko + chatgpt",
+	credits: "ari",
 	description: "join and welcome notification with cyan canvas card",
 	dependencies: {
 		"fs-extra": "",
