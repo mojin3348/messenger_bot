@@ -4,12 +4,12 @@ const { createCanvas, loadImage, registerFont } = require('canvas');
 
 module.exports.config = {
     name: "welcome",
+    eventType: ["log:subscribe"],
     version: "5.0.0",
     role: 0,
     description: "Welcome new members",
     credits: "ARI",
-    hasEvent: true,
-    eventType: ["log:subscribe"] 
+    hasEvent: true 
 };
 
 try {
@@ -75,13 +75,14 @@ async function getUserGender(api, userID) {
 }
 
 module.exports.run = async function ({ api, event }) {
-    if (event.logMessageType !== "log:subscribe") return;
-    const addedParticipants = event.logMessageData?.addedParticipants;
-    if (!addedParticipants?.length) return;
+  if (event.logMessageType !== "log:subscribe") return;
 
-    const groupInfo = await api.getThreadInfo(event.threadID);
-    const groupName = groupInfo.threadName || "this group";
+  const addedParticipants = event.logMessageData?.addedParticipants;
+  if (!addedParticipants?.length) return;
 
+  const groupInfo = await api.getThreadInfo(event.threadID);
+  const groupName = groupInfo.threadName || "this group";
+    
     const width = 900, height = 500;
     const canvas = createCanvas(width, height);
     const ctx = canvas.getContext('2d');
