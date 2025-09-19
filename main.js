@@ -1,893 +1,528 @@
-const express = require('express');
-const { addUser, rmStates, createUser, deleteUser } = require('./main/system/editconfig.js');
-const log = require("./main/utility/logs.js");
-const logger = require("./main/utility/logs.js");
-const axios = require("axios");
-const chalk = require('chalk');
-const { readdirSync, readFileSync, writeFileSync } = require("fs-extra");
-const { join, resolve } = require('path')
-const { execSync, exec } = require('child_process');
-const configLog = require('./main/utility/config.json');
-const login = require("./main/system/ws3-fca/index.js");
-const listPackage = JSON.parse(readFileSync('package.json')).dependencies;
-const packages = JSON.parse(readFileSync('package.json'));
-const fs = require("fs-extra")
-const process = require('process');
-const moment = require("moment-timezone");
-const app = express();
-const port = 8099;
-const cron = require('node-cron');
+const fs = require('fs');
 const path = require('path');
-const jwt = require('jsonwebtoken');
-
-global.client = new Object({
-    commands: new Map(),
-    events: new Map(),
-    accounts: new Map(),
-    cooldowns: new Map(),
-    mainPath: process.cwd(),
-    eventRegistered: new Map(),
-    configPath: new String(),
-    envConfigPath: new String(),
-    handleSchedule: new Array(),
-    handleReaction: new Map(),
-    handleReply: new Map(),
-    onlines: new Array()
+const login = require('ws3-fca');
+const express = require('express');
+const app = express();
+const chalk = require('chalk');
+const bodyParser = require('body-parser');
+const script = path.join(__dirname, 'script');
+const cron = require('node-cron');
+const config = fs.existsSync('./data') && fs.existsSync('./data/config.json') ? JSON.parse(fs.readFileSync('./data/config.json', 'utf8')) : createConfig();
+const dev = JSON.parse(fs.readFileSync('./dev.json'));
+const Utils = new Object({
+  commands: new Map(),
+  handleEvent: new Map(),
+  account: new Map(),
+  cooldowns: new Map(),
 });
 
-global.data = new Object({
-    threadInfo: new Map(),
-    threadData: new Map(),
-    userName: new Map(),
-    userBanned: new Map(),
-    threadBanned: new Map(),
-    commandBanned: new Map(),
-    threadAllowNSFW: new Array(),
-    allUserID: new Array(),
-    allCurrenciesID: new Array(),
-    allThreadID: new Map()
+console.log(`
++--------------------------------------------------+
+|                                         
+|    █████╗ ██████╗ ██╗                
+|   ██╔══██╗██╔══██╗██║                
+|   ███████║██████╔╝██║                
+|   ██╔══██║██╔══██╗██║                
+|   ██║  ██║██║  ██║██║                 
+|   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝                 
+|                                          
+|          A R I                        
+|                                          
++--------------------------------------------------+
+`);
+
+fs.readdirSync(script).forEach((file) => {
+  const scripts = path.join(script, file);
+  const stats = fs.statSync(scripts);
+  if (stats.isDirectory()) {
+    fs.readdirSync(scripts).forEach((file) => {
+      try {
+        const {
+          config,
+          run,
+          handleEvent
+        } = require(path.join(scripts, file));
+        if (config) {
+          const {
+            name = [], role = '0', version = '1.0.0', hasPrefix = true, aliases = [], description = '', usage = '', credits = '', cooldown = '5', dev = false
+          } = Object.fromEntries(Object.entries(config).map(([key, value]) => [key.toLowerCase(), value]));
+          aliases.push(name);
+          if (run) {
+            Utils.commands.set(aliases, {
+              name,
+              role,
+              run,
+              aliases,
+              description,
+              usage,
+              version,
+              hasPrefix: config.hasPrefix,
+              credits,
+              cooldown,
+              dev
+            });
+          }
+          if (handleEvent) {
+            Utils.handleEvent.set(aliases, {
+              name,
+              handleEvent,
+              role,
+              description,
+              usage,
+              version,
+              hasPrefix: config.hasPrefix,
+              credits,
+              cooldown,
+              dev
+            });
+          }
+        }
+      } catch (error) {
+        console.error(chalk.red(`Error installing command from file ${file}: ${error.message}`));
+      }
+    });
+  } else {
+    try {
+      const {
+        config,
+        run,
+        handleEvent
+      } = require(scripts);
+      if (config) {
+        const {
+          name = [], role = '0', version = '1.0.0', hasPrefix = true, aliases = [], description = '', usage = '', credits = '', cooldown = '5', dev = false
+        } = Object.fromEntries(Object.entries(config).map(([key, value]) => [key.toLowerCase(), value]));
+        aliases.push(name);
+        if (run) {
+          Utils.commands.set(aliases, {
+            name,
+            role,
+            run,
+            aliases,
+            description,
+            usage,
+            version,
+            hasPrefix: config.hasPrefix,
+            credits,
+            cooldown,
+            dev
+          });
+        }
+        if (handleEvent) {
+          Utils.handleEvent.set(aliases, {
+            name,
+            handleEvent,
+            role,
+            description,
+            usage,
+            version,
+            hasPrefix: config.hasPrefix,
+            credits,
+            cooldown,
+            dev
+          });
+        }
+      }
+    } catch (error) {
+      console.error(chalk.red(`Error installing command from file ${file}: ${error.message}`));
+    }
+  }
 });
-
-global.config = new Object();
-global.envConfig = new Object();
-global.accounts = new Array();
-global.nodemodule = new Object();
-global.configModule = new Object();
-global.moduleData = new Array();
-global.language = new Object();
-global.utils = require('./main/utility/utils.js');
-global.send = require("./main/utility/send.js");
-global.editBots = require("./main/system/editconfig.js");
-
-
-console.clear();
-console.log(chalk.blue('LOADING MAIN SYSTEM'));
+app.use(express.static(path.join(__dirname, 'public')));
+app.use(bodyParser.json());
 app.use(express.json());
-app.use(express.static('public/main'));
-async function logOut(res, botId) {;
-    try {
-        delete require.cache[require.resolve('./bots.json')];
-        delete require.cache[require.resolve('./states/' + botId + '.json')];
-        await global.client.accounts.delete(botId);
-        await rmStates(botId);
-        await deleteUser(botId);
-        var data = `logged out ${botId} successfully`;
-        res.send({data});
-    } catch (err) {
-        var error = `can't logged out bot ${botId}, maybe the bot is not logged in.`;
-        return res.status(400).send(botId);
-    }
-}
-
-app.get('/commands', (req, res) => {
-    const commands = global.client.commands;
-    const command = Array.from(commands.values());
-    res.json(command);
-})
-app.post('/profile', async (req, res) => {
-    try {
-        delete require.cache[require.resolve('./bots.json')];
-        const { botid } = req.body;
-        const botPath = require('./bots.json');
-        const data = botPath.find(data => data.uid === botid);
-        const name = data.name || 'Unknown';
-        const uid = botid;
-        const thumbSrc = data.thumbSrc;
-        const profileUrl = data.profileUrl;
-        const botname = data.botname;
-        const botprefix = data.prefix;
-        const admins = data.admins.length;
-        return res.send({name, uid, thumbSrc, profileUrl, botname, botprefix, admins});
-    } catch (err) {
-        return res.status(401).sendFile(path.join(__dirname, 'public/notFound.html'));
-    }
-})
-
-app.post('/logout', async (req, res) => {
-    const { botid } = req.body;
-    return await logOut(res, botid);
+const routes = [{
+  path: '/',
+  file: 'index.html'
+}, {
+  path: '/step_by_step_guide',
+  file: 'guide.html'
+}, {
+  path: '/online_user',
+  file: 'online.html'
+}, ];
+routes.forEach(route => {
+  app.get(route.path, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', route.file));
+  });
 });
-
-app.post('/configure', async (req, res) => {
-    const { botId, content, type } = req.body;
-    const botPath = "bots.json";
-    const botChanges = JSON.parse(fs.readFileSync(botPath, 'utf-8'));
-    const pointDirect = botChanges.find(i => i.uid == botId);
-    async function editDetails(where, value) {
-        pointDirect[where] = value;
-        try {
-            await fs.writeFileSync(botPath, JSON.stringify(botChanges, null, 2));
-            delete require.cache[require.resolve('./bots.json')];
-            var data = `edited ${where} successfully.`;
-            return res.send({data})
-        } catch (err) {
-            var error = `failed to edit ${where}`;
-            return res.status(400).send({error});
-        }
-    }
-    async function addAdmin(value) {
-        const edit = pointDirect.admins;
-        edit.push(value);
-        try {
-            await fs.writeFileSync(botPath, JSON.stringify(botChanges, null, 2));
-            delete require.cache[require.resolve('./bots.json')];
-            var data = `added admin ${value} successfully.`;
-            return res.send({data})
-        } catch (err) {
-            var error = `failed to add admin.`;
-            return res.status(400).send({error});
-        }
-    }
-    switch (type) {
-        case 'prefix':
-            editDetails('prefix', content);
-            break;
-        case 'botname':
-            editDetails('botname', content);
-            break;
-        case 'admin':
-            addAdmin(content);
-            break;
-        case 'logout':
-            editDetails('token', content);
-            break;
-    }
-})
-        
-app.get('/profile', (req, res) => {
-    const token = req.query.token;
-    const botid = req.query.botid;
-    const botinfo = require('./bots.json');
-    if (!token) {
-        return res.status(401).sendFile(path.join(__dirname, 'public/notFound.html'));
-    }
-    if (!botid) {
-        return res.status(401).sendFile(path.join(__dirname, 'public/notFound.html'));
-    }
-    try {
-        const verifyToken = botinfo.find(i => i.uid == botid).token;
-        if (verifyToken != token) {
-            return res.status(401).sendFile(path.join(__dirname, 'public/notFound.html'));
-        }
-        jwt.verify(token, botid , (err, decoded) => {
-        if (err) {
-            return res.status(401).sendFile(path.join(__dirname, 'public/notFound.html'));
-        }
-        res.sendFile(path.join(__dirname, 'public/profile.html'));
-    }); 
-    } catch (err) {
-        return res.status(401).sendFile(path.join(__dirname, 'public/notFound.html'));
-    }
-});
-
-app.post('/login', async (req, res) => {
-    const { username, password } = req.body;
-    const botFile = require("./bots.json");
-    const botPath = 'bots.json';
-    const botChanges = JSON.parse(fs.readFileSync(botPath, 'utf-8'));
-    const botConfig = botChanges.find(i => i.username == username && i.password == password);
-    const isExist = botFile.find(i => i.username == username && i.password == password);
-    if (isExist) {
-        const token = jwt.sign({username: username, password: password}, isExist.uid, {expiresIn: '1h'});
-        botConfig.token = token;
-        await fs.writeFileSync(botPath, JSON.stringify(botChanges, null, 2));
-        delete require.cache[require.resolve('./bots.json')];
-        return res.send({token, botid: isExist.uid});
-    } else {
-        var error = `wrong username or password, try again.`
-        return res.status(400).send({error});
-    }
-});
-
-app.post('/create', async (req, res) => {
-    const { appstate, botname, botadmin, botprefix, username, password } = req.body;
-    try {
-        const appcontent = appstate;
-        const appstateData = JSON.parse(appcontent);
-        const loginOptions = {};
-        const botFile = require('./bots.json');
-        const isExist = botFile.find(i => i.username == username);
-        if (isExist) {
-            var error = `username is already exist, try another one`;
-            return res.status(400).send({error});
-        }
-        loginOptions.appState = appstateData;
-        logger.login(`someone is logging in using website`);
-        await webLogin(res, loginOptions, botname, botprefix, username, password, botadmin);
-    } catch (err) {
-        var error = `the provided appstate is wrong format.`
-        res.status(400).send({error});
-    }
-})
 app.get('/info', (req, res) => {
-    const data = Array.from(global.client.accounts.values()).map(account => ({
-        name: account.name,
-        profileUrl: account.profileUrl,
-        thumbSrc: account.thumbSrc,
-        time: account.time
-    }));
-    res.json(JSON.parse(JSON.stringify(data, null, 2)));
+  const data = Array.from(Utils.account.values()).map(account => ({
+    name: account.name,
+    profileUrl: account.profileUrl,
+    thumbSrc: account.thumbSrc,
+    time: account.time
+  }));
+  res.json(JSON.parse(JSON.stringify(data, null, 2)));
 });
-
-
-app.use((req, res) => {
-    res.status(500).sendFile(path.join(__dirname, 'public/notFound.html'));
+app.get('/commands', (req, res) => {
+  const command = new Set();
+  const commands = [...Utils.commands.values()].map(({
+    name
+  }) => (command.add(name), name));
+  const handleEvent = [...Utils.handleEvent.values()].map(({
+    name
+  }) => command.has(name) ? null : (command.add(name), name)).filter(Boolean);
+  const role = [...Utils.commands.values()].map(({
+    role
+  }) => (command.add(role), role));
+  const aliases = [...Utils.commands.values()].map(({
+    aliases
+  }) => (command.add(aliases), aliases));
+  res.json(JSON.parse(JSON.stringify({
+    commands,
+    handleEvent,
+    role,
+    aliases
+  }, null, 2)));
 });
-app.listen(port);
-var configValue;
-try {
-    const configPath = "./config.json";
-    global.client.configPath = configPath;
-    configValue = require(global.client.configPath);
-    log(`loading ${chalk.blueBright(`config`)} file.`, "load");
-} catch (err) {
-    return log(`cant load ${chalk.blueBright(`configPath`)} in client.`, "error");
-    process.exit(0);
-}
-try {
-    for (const Keys in configValue) global.config[Keys] = configValue[Keys];
-    log(`loaded ${chalk.blueBright(`config`)} file.`, "load");
-} catch (err) {
-    return log(`can't load ${chalk.blueBright(`config`)} file.`, "error");
-    process.exit(0)
-}
-
-const langFile = (readFileSync(`${__dirname}/main/utility/languages/${global.config.language}.lang`, {
-    encoding: 'utf-8'
-})).split(/\r?\n|\r/);
-const langData = langFile.filter(item => item.indexOf('#') != 0 && item != '');
-for (const item of langData) {
-    const getSeparator = item.indexOf('=');
-    const itemKey = item.slice(0, getSeparator);
-    const itemValue = item.slice(getSeparator + 1, item.length);
-    const head = itemKey.slice(0, itemKey.indexOf('.'));
-    const key = itemKey.replace(head + '.', '');
-    const value = itemValue.replace(/\\n/gi, '\n');
-    if (typeof global.language[head] == "undefined") global.language[head] = new Object();
-    global.language[head][key] = value;
-}
-global.getText = function(...args) {
-    const langText = global.language;
-    if (!langText.hasOwnProperty(args[0])) {
-        throw new Error(`${__filename} - not found key language : ${args[0]}`);
+app.post('/login', async (req, res) => {
+  const {
+    state,
+    commands,
+    prefix,
+    admin
+  } = req.body;
+  try {
+    if (!state) {
+      throw new Error('Missing app state data');
     }
-    var text = langText[args[0]][args[1]];
-    if (typeof text === 'undefined') {
-        throw new Error(`${__filename} - not found key text : ${args[1]}`);
-    }
-    for (var i = args.length - 1; i > 0; i--) {
-        const regEx = RegExp(`%${i}`, 'g');
-        text = text.replace(regEx, args[i + 1]);
-    }
-    return text;
-};
-
-
-var envconfigValue;
-try {
-    const envconfigPath = "./main/config/envconfig.json";
-    global.client.envConfigPath = envconfigPath;
-    envconfigValue = require(global.client.envConfigPath);
-} catch (err) {
-    process.exit(0);
-}
-try {
-    for (const envKeys in envconfigValue) global.envConfig[envKeys] = envconfigValue[envKeys];
-} catch (err) {
-    process.exit(0)
-}
-
-const{ Sequelize, sequelize } = require("./main/system/database/index.js");
-const { kStringMaxLength } = require('buffer');
-const { error } = require('console');
-for (const property in listPackage) {
-    try {
-        global.nodemodule[property] = require(property)
-    } catch (e) { }
-}
-
-
-
-if (!global.config.email) {
-    logger(global.getText('main', 'emailNotfound', chalk.blueBright('config.json')), 'err');
-    process.exit(0);
-}
-
-const commandsPath = "./script/commands";
-const commandsList = readdirSync(commandsPath).filter(command => command.endsWith('.js') && !global.config.disabledcmds.includes(command));
-
-console.log(chalk.blue(global.getText('main', 'startloadCmd')));
-for (const command of commandsList) {
-    try {
-        const module = require(`${commandsPath}/${command}`);
-        const { config} = module;
-        if (!config?.name) {
-            try {
-                throw new Error(global.getText("main", "cmdNameErr", chalk.red(command)));
-            } catch (err) {
-                logger.commands(err.message);
-                continue;
-            }
-        }
-        if (!config?.category) {
-            try {
-                throw new Error(global.getText("main", "cmdCategoryErr", chalk.red(command)));
-            } catch (err) {
-                logger.commands(err.message);
-                continue;
-            }
-        }
-        if (global.config.premium) {
-            if (!config?.hasOwnProperty('premium')) {
-                try {
-                    throw new Error(global.getText("main", "premiumCmdErr", chalk.red(command)));
-                } catch (err) {
-                    logger.commands(err.message);
-                    continue;
-                }
-            }
-        }
-        if (!config?.hasOwnProperty('prefix')) {
-            try {
-                throw new Error(global.getText("main", "prefixCmdErr", chalk.red(command)), "error");
-            } catch (err) {
-                logger.commands(err.message);
-                continue;
-            }
-        }
-        const { dependencies, envConfig } = config;
-        if (dependencies) {
-            Object.entries(dependencies).forEach(([reqDependency, dependencyVersion]) => {
-                if (listPackage[reqDependency]) return;
-                try {
-                    execSync(`npm install --save ${reqDependency}${dependencyVersion ? `@${dependencyVersion}` : ''}`, {
-                        stdio: 'inherit',
-                        env: process.env,
-                        shell: true,
-                        cwd: join('./node_modules')
-                    });
-                    require.cache = {};
-                } catch (error) {
-                    const errorMessage = `failed to install package ${reqDependency}\n`;
-                    logger.error(errorMessage);
-                }
-            });
-        }
-        if (envConfig) {
-            const moduleName = config.name;
-            global.configModule[moduleName] = global.configModule[moduleName] || {};
-            global.envConfig[moduleName] = global.envConfig[moduleName] || {};
-            for (const envConfigKey in envConfig) {
-                global.configModule[moduleName][envConfigKey] = global.envConfig[moduleName][envConfigKey] ?? envConfig[envConfigKey];
-                global.envConfig[moduleName][envConfigKey] = global.envConfig[moduleName][envConfigKey] ?? envConfig[envConfigKey];
-            }
-            var envConfigPath = require("./main/config/envconfig.json");
-            var configPah = "./main/config/envconfig.json";
-            envConfigPath[moduleName] = config.envConfig;
-            fs.writeFileSync(configPah, JSON.stringify(envConfigPath, null, 4), 'utf-8');
-        }
-        if (global.client.commands.has(config.name || "")) {
-            try {
-                throw new Error(global.getText("main", "commandNameExist", chalk.red(command)));
-            } catch (err) {
-                logger.commands(err.message);
-                continue;
-            }
-        }
-        
-        global.client.commands.set(config.name, module);
-        logger.commands(global.getText("main", "commands", chalk.blueBright(command)));
-    } catch (err) {
-        logger.commands(global.getText("main", "cmderr", chalk.red(command), err));
-        continue;
-    }
-}
-
-const evntsPath = "./script/events";
-const evntsList = readdirSync(evntsPath).filter(events => events.endsWith('.js') && !global.config.disabledevnts.includes(events));
-console.log(`${chalk.blue(`\n${global.getText("main", "startloadEvnt")}`)}`)
-for (const ev of evntsList) {
-    try {
-        const events = require(`${evntsPath}/${ev}`);
-        const { config, onLoad, run } = events;
-        if (!config || !config?.name ) {
-            try {
-                throw new Error(global.getText("main", "failedEvnt", chalk.red(ev)));
-            } catch (err) {
-                logger.events(err.message);
-                continue;
-            }
-        }
-        if (global.client.events.has(config.name || "")) {
-            try {
-                throw new Error(global.getText("main", "evNameExist", chalk.red(ev)));
-            } catch (err) {
-                logger.events(err.message);
-                continue;
-            }
-        }
-        global.client.events.set(config.name, events);
-        logger.events(global.getText("main", "events", chalk.blueBright(ev)));
-    } catch (err) {
-        logger.events(global.getText("main", "evnterr", chalk.red(ev)));
-        continue;
-    }
-}
-
-process.on('unhandledRejection', (reason) => {
-    console.error(reason);
-});
-
-
-(async() => {
-    await sequelize.authenticate();
-})()
-const authentication = {};
-authentication.Sequelize = Sequelize;
-authentication.sequelize = sequelize;
-const models = require('./main/system/database/model.js')(authentication);
-
-async function autoPost({api}) {
-    if (global.config.autopost) {
-        const date = new Date().getDate();
-        const response = await axios.get(`https://beta.ourmanna.com/api/v1/get/?format=text&order=random&order_by=verse&day=${date}`);
-        const bible = String(response.data);
+    const cUser = state.find(item => item.key === 'c_user');
+    if (cUser) {
+      const existingUser = Utils.account.get(cUser.value);
+      if (existingUser) {
+        console.log(`User ${cUser.value} is already logged in`);
+        return res.status(400).json({
+          error: false,
+          message: "Active user session detected; already logged in",
+          user: existingUser
+        });
+      } else {
         try {
-            await api.createPost({
-                body: bible,
-                baseState: 1
-            })
-                .then(() => {
-                    logger(`posted : ${bible}`);
-                });
-        } catch (err) {}
+          await accountLogin(state, commands, prefix, [admin]);
+          res.status(200).json({
+            success: true,
+            message: 'Authentication process completed successfully; login achieved.'
+          });
+        } catch (error) {
+          console.error(error);
+          res.status(400).json({
+            error: true,
+            message: error.message
+          });
+        }
+      }
     } else {
-        logger(`auto post is turned off.`);
+      return res.status(400).json({
+        error: true,
+        message: "There's an issue with the appstate data; it's invalid."
+      });
     }
-}
-async function startLogin(appstate, filename, callback) {
-    return new Promise(async (resolve, reject) => {
-        login(appstate, async (err, api) => {
-            if (err) {
-                reject(err);
-                delete require.cache[require.resolve(`./states/${filename}.json`)];
-                rmStates(filename);
-                return;
-            }
-            const botModel = models;
-            const userId = await api.getCurrentUserID();
-            try {
-                const userInfo = await api.getUserInfo(userId);
-                if (!userInfo || !userInfo[userId]?.name || !userInfo[userId]?.profileUrl || !userInfo[userId]?.thumbSrc) throw new Error('unable to locate the account; it appears to be in a suspended or locked state.');
-                const {
-                    name,
-                    profileUrl,
-                    thumbSrc
-                } = userInfo[userId];
-                delete require.cache[require.resolve('./bots.json')];
-                addUser(name, userId);
-                let time = (JSON.parse(fs.readFileSync('./bots.json', 'utf-8')).find(user => user.uid === userId) || {}).time || 0;
-                global.client.accounts.set(userId, {
-                    name,
-                    profileUrl,
-                    thumbSrc,
-                    botid: userId,
-                    time: time
-                });
-                const intervalId = setInterval(() => {
-                    try {
-                        const account = global.client.accounts.get(userId);
-                        if (!account) throw new Error('Account not found');
-                        global.client.accounts.set(userId, {
-                            ...account,
-                            time: account.time + 1
-                        });
-                    } catch (error) {
-                        clearInterval(intervalId);
-                        return;
-                    }
-                }, 1000);
-            } catch (error) {
-                reject(error);
-                return;
-            }
-            log.login(global.getText("main", "successLogin", chalk.blueBright(filename)));
-            delete require.cache[require.resolve('./bots.json')];
-            global.client.api = api;
-            global.client.eventRegistered.set(userId, new Array());
-            api.setOptions(global.config.loginoptions);
-            const Datahandle = new Array();
-            global.client.handleReply.set(userId, new Array());
-            global.client.handleReaction.set(userId, new Array());
-            global.data.allThreadID.set(userId, new Array());
-            cron.schedule(`*/30 * * * *`, async() => {
-                await autoPost({api});
-            }, {
-                scheduled: true,
-                timezone: 'Asia/Manila'
-            });
-            const cmdsPath = "./script/commands";
-            const cmdsList = readdirSync(cmdsPath).filter(command => command.endsWith('.js') && !global.config.disabledcmds.includes(command));
-            for (const cmds of cmdsList) {
-                try {
-                    const module = require(`${cmdsPath}/${cmds}`);
-                    const { config, onLoad} = module;
-                    if (onLoad) {
-                        const moduleData = {};
-                        moduleData.api = api;
-                        moduleData.models = botModel;
-                        module.onLoad(moduleData);
-                    }
-                    if (module.handleEvent) global.client.eventRegistered.get(userId).push(config.name);
-                    try {
-                        fs.writeFileSync(jdididid)
-                    } catch(err) {
-                        resolve(err)
-                    }
-                } catch (err) {
-                    reject(err);
-                }
-            }
-            const eventsPath = "./script/events";
-            const eventsList = readdirSync(eventsPath).filter(events => events.endsWith('.js') && !global.config.disabledevnts.includes(events));
-            for (const ev of eventsList) {
-                try {
-                    const events = require(`${eventsPath}/${ev}`);
-                    const { config, onLoad, run } = events;
-                    if (onLoad) {
-                        const eventData = {};
-                        eventData.api = api,
-                        eventData.models = botModel;
-                        onLoad(eventData);
-                    }
-                    try {
-                        fs.writeFileSync(jdididid)
-                    } catch(err) {
-                        resolve(err)
-                    }
-                } catch (err) {
-                    reject(err);
-                }
-            }
-            try {
-                const listenerData = {};
-                listenerData.api = api;
-                listenerData.models = botModel;
-                global.custom = require('./custom.js')({ api: api });
-                const listener = require('./main/system/listen.js')(listenerData);
-                async function listenCallback(error, event) {
-                    if (JSON.stringify(error).includes('601051028565049')) {
-                        const data = {
-                            av: api.getCurrentUserID(),
-                            fb_api_caller_class: "RelayModern",
-                            fb_api_req_modern_name: "FBScrapingWarningMutation",
-                            variables: "{}",
-                            server_timestamps: "true",
-                            doc_id: "6339492849481770",
-                        }
-                        api.httpPost(`https://www.facebook.com/api/graphql/`, data, (err, index) => {
-                            const response = JSON.parse(index);
-                            if (err || response.errors) {
-                                logger.error(`error on bot ${userId}, removing data..`);
-                                deleteUser(userId);
-                                rmStates(filename);
-                                global.client.accounts.delete(userId);
-                                global.data.allThreadID.delete(userId);
-                                return logger.error(`removed the data of ${userId}`);
-                            }
-                            if (response.data.fb_scraping_warning_clear.success) {
-                                global.handleListen = api.listenMqtt(listenCallback);
-                                setTimeout(() => (mqttClient.end(), connect()), 1000 * 60 * 60 * 6);
-                            } else {
-                                logger.error(`error on bot ${userId}, removing data..`);
-                                deleteUser(userId);
-                                rmStates(filename);
-                                global.client.accounts.delete(userId);
-                                global.data.allThreadID.delete(userId);
-                                return logger.error(`removed the data of ${userId}`);
-                            }
-                        })
-                    }
-                    if (["presence", "typ", "read_receipt"].some((data) => data === event?.type)) return;
-                    return listener(event)
-                }
-                function connect() {
-                    global.handleListen = api.listenMqtt(listenCallback)
-                    setTimeout(connect, 1000 * 60 * 60 * 6);
-                }
-                connect();
-            } catch (error) {
-                logger.error(`error on bot ${userId}, removing data..`);
-                deleteUser(userId);
-                rmStates(filename);
-                global.client.accounts.delete(userId);
-                global.data.allThreadID.delete(userId);
-                return logger.error(`removed the data of ${userId}`);
-            }
-            callback(null, api);
-        });
+  } catch (error) {
+    return res.status(400).json({
+      error: true,
+      message: "There's an issue with the appstate data; it's invalid."
     });
-}
-
-async function webLogin(res, appState, botName, botPrefix, username, password, botAdmin) {
-    return new Promise(async (resolve, reject) => {
-        login(appState, async (err, api) => {
-            if (err) {
-                reject(err);
-                var error = `an error occurred when logging in, maybe your appstate is invalid`
-                res.status(400).send({error});
-                return;
-            }
-            const botModel = models;
-            const userId = await api.getCurrentUserID();
-            const botFile = require('./bots.json');
-            const token = jwt.sign({username: username, password: password}, userId, {expiresIn: '1h'});
-            
-            try {
-                const userInfo = await api.getUserInfo(userId);
-                if (!userInfo || !userInfo[userId]?.name || !userInfo[userId]?.profileUrl || !userInfo[userId]?.thumbSrc) throw new Error('unable to locate the account; it appears to be in a suspended or locked state.');
-                const {
-                    name,
-                    profileUrl,
-                    thumbSrc
-                } = userInfo[userId];
-                const isExists = global.client.accounts.get(userId);
-                if (isExists) {
-                    var error = `${name} is already logged in`;
-                    logger.error(`can't logged in, ${name} is already logged in`);
-                    return res.status(400).send({error});
-                }
-                delete require.cache[require.resolve('./bots.json')];
-                createUser(name, userId, botName, botPrefix, username, password, thumbSrc, profileUrl, token, botAdmin);
-                
-                let time = (JSON.parse(fs.readFileSync('./bots.json', 'utf-8')).find(user => user.uid === userId) || {}).time || 0;
-                global.client.accounts.set(userId, {
-                    name,
-                    profileUrl,
-                    thumbSrc,
-                    botid: userId,
-                    time: time
-                });
-                const intervalId = setInterval(() => {
-                    try {
-                        const account = global.client.accounts.get(userId);
-                        if (!account) throw new Error('Account not found');
-                        global.client.accounts.set(userId, {
-                            ...account,
-                            time: account.time + 1
-                        });
-                    } catch (error) {
-                        clearInterval(intervalId);
-                        return;
-                    }
-                }, 1000);
-            } catch (error) {
-                reject(error);
-                return;
-            }
-            const userInfo = await api.getUserInfo(userId);
-            const {
-                    name,
-                    profileUrl,
-                    thumbSrc
-                } = userInfo[userId];
-            const appstateData = await api.getAppState();
-            await fs.writeFile(`states/${userId}.json`, JSON.stringify(appstateData, null, 2))
-            var data = `logged in ${name} successfully.`
-            res.send({data, token, botid: userId});
-            log.login(global.getText("main", "successLogin", chalk.blueBright(name)));
-            delete require.cache[require.resolve('./bots.json')];
-            global.client.api = api;
-            global.client.eventRegistered.set(userId, new Array());
-            api.setOptions(global.config.loginoptions);
-            global.client.handleReply.set(userId, new Array());
-            global.client.handleReaction.set(userId, new Array());
-            global.data.allThreadID.set(userId, new Array());
-            cron.schedule(`*/30 * * * *`, async() => {
-                await autoPost({api});
-            }, {
-                scheduled: true,
-                timezone: 'Asia/Manila'
-            });
-            const cmdsPath = "./script/commands";
-            const cmdsList = readdirSync(cmdsPath).filter(command => command.endsWith('.js') && !global.config.disabledcmds.includes(command));
-            for (const cmds of cmdsList) {
-                try {
-                    const module = require(`${cmdsPath}/${cmds}`);
-                    const { config, onLoad} = module;
-                    if (onLoad) {
-                        const moduleData = {};
-                        moduleData.api = api;
-                        moduleData.models = botModel;
-                        module.onLoad(moduleData);
-                    }
-                    if (module.handleEvent) global.client.eventRegistered.get(userId).push(config.name);
-                    try {
-                        fs.writeFileSync(jdididid)
-                    } catch(err) {
-                        resolve(err)
-                    }
-                } catch (err) {
-                    reject(err);
-                }
-            }
-            const eventsPath = "./script/events";
-            const eventsList = readdirSync(eventsPath).filter(events => events.endsWith('.js') && !global.config.disabledevnts.includes(events));
-            for (const ev of eventsList) {
-                try {
-                    const events = require(`${eventsPath}/${ev}`);
-                    const { config, onLoad, run } = events;
-                    if (onLoad) {
-                        const eventData = {};
-                        eventData.api = api,
-                            eventData.models = botModel;
-                        onLoad(eventData);
-                    }
-                    try {
-                        fs.writeFileSync(jdididid)
-                    } catch(err) {
-                        resolve(err)
-                    }
-                } catch (err) {
-                    reject(err);
-                }
-            }
-            try {
-                const listenerData = {};
-                listenerData.api = api;
-                listenerData.models = botModel;
-                global.custom = require('./custom.js')({ api: api });
-                const listener = require('./main/system/listen.js')(listenerData);
-                async function listenCallback(error, event) {
-                    if (JSON.stringify(error).includes('601051028565049')) {
-                        const data = {
-                            av: api.getCurrentUserID(),
-                            fb_api_caller_class: "RelayModern",
-                            fb_api_req_modern_name: "FBScrapingWarningMutation",
-                            variables: "{}",
-                            server_timestamps: "true",
-                            doc_id: "6339492849481770",
-                        }
-                        api.httpPost(`https://www.facebook.com/api/graphql/`, data, (err, index) => {
-                            const response = JSON.parse(index);
-                            if (err || response.errors) {
-                                logger.error(`error on bot ${userId}, removing data..`);
-                                deleteUser(userId);
-                                rmStates(filename);
-                                global.client.accounts.delete(userId);
-                                global.data.allThreadID.delete(userId);
-                                return logger.error(`removed the data of ${userId}`);
-                            }
-                            if (response.data.fb_scraping_warning_clear.success) {
-                                global.handleListen = api.listenMqtt(listenCallback);
-                                setTimeout(() => (mqttClient.end(), connect()), 1000 * 60 * 60 * 6);
-                            } else {
-                                logger.error(`error on bot ${userId}, removing data..`);
-                                deleteUser(userId);
-                                rmStates(filename);
-                                global.client.accounts.delete(userId);
-                                global.data.allThreadID.delete(userId);
-                                return logger.error(`removed the data of ${userId}`);
-                            }
-                        })
-                    }
-                    if (["presence", "typ", "read_receipt"].some((data) => data === event?.type)) return;
-                    return listener(event)
-                }
-                function connect() {
-                    global.handleListen = api.listenMqtt(listenCallback)
-                    setTimeout(connect, 1000 * 60 * 60 * 6);
-                }
-                connect();
-            } catch (error) {
-                logger.error(`error on bot ${userId}, removing data..`);
-                deleteUser(userId);
-                rmStates(userId);
-                global.client.accounts.delete(userId);
-                global.data.allThreadID.delete(userId);
-                return logger.error(`removed the data of ${userId}`);
-            }
+  }
+});
+app.listen(3000, () => {
+  console.log(`Server is running at http://localhost:5000`);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('Unhandled Promise Rejection:', reason);
+});
+async function accountLogin(state, enableCommands = [], prefix, admin = []) {
+  return new Promise((resolve, reject) => {
+    login({
+      appState: state
+    }, async (error, api) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      const userid = await api.getCurrentUserID();
+      addThisUser(userid, enableCommands, state, prefix, admin);
+      try {
+        const userInfo = await api.getUserInfo(userid);
+        if (!userInfo || !userInfo[userid]?.name || !userInfo[userid]?.profileUrl || !userInfo[userid]?.thumbSrc) throw new Error('Unable to locate the account; it appears to be in a suspended or locked state.');
+        const {
+          name,
+          profileUrl,
+          thumbSrc
+        } = userInfo[userid];
+        let time = (JSON.parse(fs.readFileSync('./data/history.json', 'utf-8')).find(user => user.userid === userid) || {}).time || 0;
+        Utils.account.set(userid, {
+          name,
+          profileUrl,
+          thumbSrc,
+          time: time
         });
-    });
-}
-
-// PROCESS ALL APPSTATE
-async function loadBot() {
-    const appstatePath = './states';
-    const listsAppstates = readdirSync(appstatePath).filter(Appstate => Appstate.endsWith('.json'));
-    console.log(chalk.blue('\n'+global.getText("main", "loadingLogin")));
-    let hasErrors = {
-        status: false
-    };
-    let userID = "";
-    try {
-        for (const states of listsAppstates) {
-            try {
-
-                if (fs.readFileSync(`${appstatePath}/${states}`, 'utf8').trim() === '') {
-                    console.error(chalk.red(global.getText("main", "appstateEmpty", states)));
-                    rmStates(path.parse(states).name);
-                    continue;
-                }
-
-                let data = `${appstatePath}/${states}`;
-
-                const appstateData = JSON.parse(fs.readFileSync(data, "utf8"));
-
-
-                const loginDatas = {};
-                loginDatas.appState = appstateData;
-                try {
-                    log.login(global.getText("main", "loggingIn", chalk.blueBright(path.parse(states).name)));
-                    await startLogin(loginDatas, path.parse(states).name, async (err, api) => {
-                        userID = await api.getCurrentUserID();
-                    });
-                } catch (err) { 
-                    hasErrors.status = true;
-                    hasErrors.states = states;
-                }
-            } catch (err) {
-                hasErrors.status = true;
-                hasErrors.states = states;
+        const intervalId = setInterval(() => {
+          try {
+            const account = Utils.account.get(userid);
+            if (!account) throw new Error('Account not found');
+            Utils.account.set(userid, {
+              ...account,
+              time: account.time + 1
+            });
+          } catch (error) {
+            clearInterval(intervalId);
+            return;
+          }
+        }, 1000);
+      } catch (error) {
+        reject(error);
+        return;
+      }
+      api.setOptions({
+        listenEvents: config[0].fcaOption.listenEvents,
+        logLevel: config[0].fcaOption.logLevel,
+        updatePresence: config[0].fcaOption.updatePresence,
+        selfListen: config[0].fcaOption.selfListen,
+        forceLogin: config[0].fcaOption.forceLogin,
+        online: config[0].fcaOption.online,
+        autoMarkDelivery: config[0].fcaOption.autoMarkDelivery,
+        autoMarkRead: config[0].fcaOption.autoMarkRead,
+      });
+      try {
+        var listenEmitter = api.listenMqtt(async (error, event) => {
+          if (error) {
+            if (error === 'Connection closed.') {
+              console.error(`Error during API listen: ${error}`, userid);
             }
-        }
+            console.log(error)
+          }
+          let database = fs.existsSync('./data/database.json') ? JSON.parse(fs.readFileSync('./data/database.json', 'utf8')) : createDatabase();
+          let data = Array.isArray(database) ? database.find(item => Object.keys(item)[0] === event?.threadID) : {};
+          let adminIDS = data ? database : createThread(event.threadID, api);
+          let blacklist = (JSON.parse(fs.readFileSync('./data/history.json', 'utf-8')).find(blacklist => blacklist.userid === userid) || {}).blacklist || [];
+          let hasPrefix = (event.body && aliases((event.body || '')?.trim().toLowerCase().split(/ +/).shift())?.hasPrefix == false) ? '' : prefix;
+          let [command, ...args] = ((event.body || '').trim().toLowerCase().startsWith(hasPrefix?.toLowerCase()) ? (event.body || '').trim().substring(hasPrefix?.length).trim().split(/\s+/).map(arg => arg.trim()) : []);
+          if (hasPrefix && aliases(command)?.hasPrefix === false) {
+            api.sendMessage(`Invalid usage this command doesn't need a prefix`, event.threadID, event.messageID);
+            return;
+          }
+          if (event.body && aliases(command)?.name) {
+            const isDevOnly = aliases(command)?.dev;
+            if (isDevOnly) {
+              if (!dev.includes(event.senderID)) {
+                return api.sendMessage("You dont have access to this command, you need to be a developer.", event.threadID, event.messageID)
+              }
+            }
+            const role = aliases(command)?.role ?? 0;
+            const isAdmin = config?.[0]?.masterKey?.admin?.includes(event.senderID) || admin.includes(event.senderID);
+            const isThreadAdmin = isAdmin || ((Array.isArray(adminIDS) ? adminIDS.find(admin => Object.keys(admin)[0] === event.threadID) : {})?.[event.threadID] || []).some(admin => admin.id === event.senderID);
+            if ((role == 1 && !isAdmin) || (role == 2 && !isThreadAdmin) || (role == 3 && !config?.[0]?.masterKey?.admin?.includes(event.senderID))) {
+              api.sendMessage(`You don't have permission to use this command.`, event.threadID, event.messageID);
+              return;
+            }
+          }
+          if (event.body && event.body?.toLowerCase().startsWith(prefix.toLowerCase()) && aliases(command)?.name) {
+            if (blacklist.includes(event.senderID)) {
+              api.sendMessage("We're sorry, but you've been banned from using bot. If you believe this is a mistake or would like to appeal, please contact one of the bot admins for further assistance.", event.threadID, event.messageID);
+              return;
+            }
+          }
+          if (event.body && aliases(command)?.name) {
+            const now = Date.now();
+            const name = aliases(command)?.name;
+            const sender = Utils.cooldowns.get(`${event.senderID}_${name}_${userid}`);
+            const delay = aliases(command)?.cooldown ?? 0;
+            if (!sender || (now - sender.timestamp) >= delay * 1000) {
+              Utils.cooldowns.set(`${event.senderID}_${name}_${userid}`, {
+                timestamp: now,
+                command: name
+              });
+            } else {
+              const active = Math.ceil((sender.timestamp + delay * 1000 - now) / 1000);
+              api.sendMessage(`Please wait ${active} seconds before using the "${name}" command again.`, event.threadID, event.messageID);
+              return;
+            }
+          }
+          if (event.body && !command && event.body?.toLowerCase().startsWith(prefix.toLowerCase())) {
+            api.sendMessage(`Invalid command please use ${prefix}help to see the list of available commands.`, event.threadID, event.messageID);
+            return;
+          }
+          if (event.body && command && prefix && event.body?.toLowerCase().startsWith(prefix.toLowerCase()) && !aliases(command)?.name) {
+            api.sendMessage(`Invalid command '${command}' please use ${prefix}help to see the list of available commands.`, event.threadID, event.messageID);
+            return;
+          }
+          for (const {
+              handleEvent,
+              name
+            }
+            of Utils.handleEvent.values()) {
+            if (handleEvent && name && (
+                (enableCommands[1].handleEvent || []).includes(name) || (enableCommands[0].commands || []).includes(name))) {
+              handleEvent({
+                api,
+                event,
+                enableCommands,
+                admin,
+                prefix,
+                blacklist
+              });
+            }
+          }
+          switch (event.type) {
+            case 'message':
+            case 'message_reply':
+            case 'message_unsend':
+            case 'message_reaction':
+              if (enableCommands[0].commands.includes(aliases(command?.toLowerCase())?.name)) {
+                await ((aliases(command?.toLowerCase())?.run || (() => {}))({
+                  api,
+                  event,
+                  args,
+                  enableCommands,
+                  admin,
+                  prefix,
+                  blacklist,
+                  Utils,
+                }));
+              }
+              break;
+          }
+        });
+      } catch (error) {
+        console.error('Error during API listen, outside of listen', userid);
+        Utils.account.delete(userid);
+        deleteThisUser(userid);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+async function deleteThisUser(userid) {
+  const configFile = './data/history.json';
+  let config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  const sessionFile = path.join('./data/session', `${userid}.json`);
+  const index = config.findIndex(item => item.userid === userid);
+  if (index !== -1) config.splice(index, 1);
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+  try {
+    fs.unlinkSync(sessionFile);
+  } catch (error) {
+    console.log(error);
+  }
+}
+async function addThisUser(userid, enableCommands, state, prefix, admin, blacklist) {
+  const configFile = './data/history.json';
+  const sessionFolder = './data/session';
+  const sessionFile = path.join(sessionFolder, `${userid}.json`);
+  if (fs.existsSync(sessionFile)) return;
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  config.push({
+    userid,
+    prefix: prefix || "",
+    admin: admin || [],
+    blacklist: blacklist || [],
+    enableCommands,
+    time: 0,
+  });
+  fs.writeFileSync(configFile, JSON.stringify(config, null, 2));
+  fs.writeFileSync(sessionFile, JSON.stringify(state));
+}
 
-        if (hasErrors.status) {
-            logger.error(global.getText("main", "loginErrencounter"));
-            delete require.cache[require.resolve(`./states/${hasErrors.states}`)];
-            rmStates(path.parse(hasErrors.states).name);
-            deleteUser(userID);
-            global.data.allThreadID.delete(userID);
-        }
-    } catch (err) {
-    }
+function aliases(command) {
+  const aliases = Array.from(Utils.commands.entries()).find(([commands]) => commands.includes(command?.toLowerCase()));
+  if (aliases) {
+    return aliases[1];
+  }
+  return null;
 }
-loadBot();
+async function main() {
+  const empty = require('fs-extra');
+  const cacheFile = './script/cache';
+  if (!fs.existsSync(cacheFile)) fs.mkdirSync(cacheFile);
+  const configFile = './data/history.json';
+  if (!fs.existsSync(configFile)) fs.writeFileSync(configFile, '[]', 'utf-8');
+  const config = JSON.parse(fs.readFileSync(configFile, 'utf-8'));
+  const sessionFolder = path.join('./data/session');
+  if (!fs.existsSync(sessionFolder)) fs.mkdirSync(sessionFolder);
+  const adminOfConfig = fs.existsSync('./data') && fs.existsSync('./data/config.json') ? JSON.parse(fs.readFileSync('./data/config.json', 'utf8')) : createConfig();
+  cron.schedule(`*/${adminOfConfig[0].masterKey.restartTime} * * * *`, async () => {
+    const history = JSON.parse(fs.readFileSync('./data/history.json', 'utf-8'));
+    history.forEach(user => {
+      (!user || typeof user !== 'object') ? process.exit(1): null;
+      (user.time === undefined || user.time === null || isNaN(user.time)) ? process.exit(1): null;
+      const update = Utils.account.get(user.userid);
+      update ? user.time = update.time : null;
+    });
+    await empty.emptyDir(cacheFile);
+    await fs.writeFileSync('./data/history.json', JSON.stringify(history, null, 2));
+    process.exit(1);
+  });
+  try {
+    for (const file of fs.readdirSync(sessionFolder)) {
+      const filePath = path.join(sessionFolder, file);
+      try {
+        const {
+          enableCommands,
+          prefix,
+          admin,
+          blacklist
+        } = config.find(item => item.userid === path.parse(file).name) || {};
+        const state = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+        if (enableCommands) await accountLogin(state, enableCommands, prefix, admin, blacklist);
+      } catch (error) {
+        deleteThisUser(path.parse(file).name);
+      }
+    }
+  } catch (error) {}
+}
 
-function autoRestart(config) {
-    if(config.status) {
-        setInterval(async () => {
-            process.exit(1)
-        }, config.time * 60 * 1000)
+function createConfig() {
+  const config = [{
+    masterKey: {
+      admin: [],
+      devMode: false,
+      database: false,
+      restartTime: 15,
+    },
+    fcaOption: {
+      forceLogin: true,
+      listenEvents: true,
+      logLevel: "silent",
+      updatePresence: true,
+      selfListen: false,
+      userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64",
+      online: true,
+      autoMarkDelivery: false,
+      autoMarkRead: false
     }
+  }];
+  const dataFolder = './data';
+  if (!fs.existsSync(dataFolder)) fs.mkdirSync(dataFolder);
+  fs.writeFileSync('./data/config.json', JSON.stringify(config, null, 2));
+  return config;
 }
-function autoDeleteCache(config) {
-    if(config.status) {
-        setInterval(async () => {
-            const { exec } = require('child_process');
-            exec('rm -rf script/commands/cache && mkdir -p script/commands/cache && rm -rf script/events/cache && mkdir -p script/events/cache', (error, stdout, stderr) => {
-                if (error) {
-                    logger(`error : ${error}`, "cache")
-                    return;
-                }
-                if (stderr) {
-                    logger(`stderr : ${stderr}`, "cache")
-                    return;
-                }
-                return logger(`successfully deleted caches`)
-            })
-        }, config.time * 60 * 1000)
-    }
+async function createThread(threadID, api) {
+  try {
+    const database = JSON.parse(fs.readFileSync('./data/database.json', 'utf8'));
+    let threadInfo = await api.getThreadInfo(threadID);
+    let adminIDs = threadInfo ? threadInfo.adminIDs : [];
+    const data = {};
+    data[threadID] = adminIDs
+    database.push(data);
+    await fs.writeFileSync('./data/database.json', JSON.stringify(database, null, 2), 'utf-8');
+    return database;
+  } catch (error) {
+    console.log(error);
+  }
 }
-autoDeleteCache(global.config.autoDeleteCache)
-autoRestart(global.config.autorestart)
+async function createDatabase() {
+  const data = './data';
+  const database = './data/database.json';
+  if (!fs.existsSync(data)) {
+    fs.mkdirSync(data, {
+      recursive: true
+    });
+  }
+  if (!fs.existsSync(database)) {
+    fs.writeFileSync(database, JSON.stringify([]));
+  }
+  return database;
+}
+main()
