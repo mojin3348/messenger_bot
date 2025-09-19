@@ -748,44 +748,39 @@
         <button class="menu-buttons" onclick="gotoOnlines()">Onlines</button>
       </ul>
     </div>
-    <div class="create-container">
-      <div class="container">
-        <p style="font-size: 10px; margin-top: 1px; margin-bottom: 0px; -webkit-user-select: none; -ms-user-select: none; user-select: none;">Facebook Appstate</p>
-        <textarea type="text" rows="5" id="appState" placeholder="paste your appstate here"></textarea>
-        <p style="font-size: 10px; margin-top: 1px; margin-bottom: 0px; -webkit-user-select: none; -ms-user-select: none; user-select: none;">Bot Details</p>
-        <input type="text" id="username" placeholder="username (optional)">
-        </textarea>
-        <input type="password" id="password" placeholder="password (optional)">
-        </textarea>
-        <input type="text" id="botName" placeholder="bot name ( ex: Ari )">
-        </textarea>
-        <input type="text" id="botPrefix" placeholder="bot prefix ( symbol )">
-        </textarea>
-        <input type="text" id="botAdmin" placeholder="bot admin ( facebook id )">
-        </textarea>
-        </br>
-        <p style="font-size: 10px; display: none;" class="whatsGoin"></p>
-        <button style="margin-top: 10px;" class="createButton" onclick="createBot()">Submit</button>
-        <p class="cmddes" style="margin-top: 13px;">Have already bot? click : <a class="cmddes" id="showLogin" style="color: blue;">Log-in</a>
-        </p>
+    <div class="container">
+      <h2 class="subtitle">Facebook Appstate</h2>
+      <form id="json-form" onsubmit="submitForm(event)">
+        <textarea id="json-data" placeholder="Paste your appstate here"></textarea>
+      </form>
+
+      <div id="listOfCommands">
+        <h2 class="subtitle">Select your commands</h2>
+        <button class="btn" onclick="selectAllCommands()">Select all commands</button>
       </div>
-    </div>
-    <div class="login-container">
-      <div class="container">
-        <h5>Login to continue</h5>
-        <input type="text" id="lUsername" placeholder="username">
-        </textarea>
-        <input type="password" id="lPassword" placeholder="password">
-        </textarea>
-        </br>
-        <p style="font-size: 10px; display: none;" class="loginInfo"></p>
-        <button style="margin-top: 10px;" class="loginButton" onclick="login()">Login</button>
-        <p class="cmddes" style="margin-top: 13px;">Dont have bot? click : <a class="cmddes" id="showCreate" style="color: blue;">Create</a>
-        </p>
+
+      <div id="listOfCommandsEvent">
+        <h2 class="subtitle">Select your event commands</h2>
+        <button class="btn" onclick="selectAllEvents()">Select all events</button>
       </div>
-    </div>
-    <div class="command-container">
-      <div class="cmd-container"></div>
+
+      <div id="prefixOfCommands">
+        <h2 class="subtitle">Enter prefix (optional)</h2>
+        <input type="text" id="inputOfPrefix" />
+      </div>
+
+      <div id="adminOfCommands">
+        <h2 class="subtitle">Enter UID (important)</h2>
+        <input type="text" id="inputOfAdmin" />
+      </div>
+
+      <label class="terms-check">
+        <input type="checkbox" id="agreeCheckbox" /> I have read and agree to the Terms and Conditions.
+      </label>
+
+      <div class="text-center">
+        <button class="btn submit-btn" onclick="State()" disabled id="submitButton">Submit</button>
+      </div>
     </div>
     <div class="onlines-container">
       <div class="container">
