@@ -7,7 +7,7 @@ module.exports.config = {
   cooldowns: 5
 };
 
-module.exports.run = async function ({ api, event }) {
+module.exports.handleEvent = async function ({ api, event }) {
   const fs = require("fs");
   const axios = require("axios");
 
