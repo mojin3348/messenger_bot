@@ -3,13 +3,15 @@ const path = require('path');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 
 module.exports.config = {
-    name: "welcome",
-    eventType: ["log:subscribe"],
-    version: "5.0.0",
-    role: 0,
-    description: "Welcome new members",
-    credits: "ARI",
-    hasEvent: true 
+  name: "welcome",                 
+  eventType: ["log:subscribe"],    
+  version: "1.0.0",
+  credits: "ARI",
+  description: "Welcome new members with canvas",
+  dependencies: {
+    "fs-extra": "",                
+    "canvas": ""
+  }
 };
 
 try {
@@ -75,6 +77,7 @@ async function getUserGender(api, userID) {
 }
 
 module.exports.run = async function ({ api, event }) {
+  if (event.logMessageType !== "log:subscribe") return;
   const addedParticipants = event.logMessageData?.addedParticipants;
   if (!addedParticipants?.length) return;
 
