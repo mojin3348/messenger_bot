@@ -3,8 +3,7 @@ const path = require('path');
 const { createCanvas, loadImage, registerFont } = require('canvas');
 
 module.exports.config = {
-  name: "welcome",                 
-  eventType: ["log:subscribe"],    
+  name: "welcome",                   
   version: "1.0.0",
   credits: "ARI",
   description: "Welcome new members with canvas"
