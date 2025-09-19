@@ -2,7 +2,7 @@ module.exports.config = {
   name: "help",
   version: "1.0.2",
   permission: 0,
-  credits: "ryuko",
+  credits: "ari",
   description: "beginner's guide",
   prefix: true,
   premium: false,
@@ -11,181 +11,97 @@ module.exports.config = {
   cooldowns: 5
 };
 
-module.exports.languages = {
-  english: {
-    moduleInfo:
-      "%1\n%2\n\nusage : %3\ncategory : %4\nwaiting time : %5 seconds(s)\npermission : %6\n\nmodule code by %7.",
-    helpList:
-      `THERE ARE %1 COMMANDS AND %2 CATEGORIES`,
-    user: "user",
-    adminGroup: "group admin",
-    adminBot: "bot admin",
-  },
-  bangla: {
-    moduleInfo:
-      "%1\n%2\n\nusage : %3\ncategory : %4\nwaiting time : %5 seconds(s)\npermission : %6\n\nmodule code by %7.",
-    helpList:
-      `THERE ARE %1 COMMANDS AND %2 CATEGORIES`,
-    user: "user",
-    adminGroup: "group admin",
-    adminBot: "bot admin",
-  }
+module.exports.run = async function ({
+        api,
+        event,
+        enableCommands,
+        args,
+        Utils,
+        prefix
+}) {
+        const input = args[0];
+        try {
+                const eventCommands = enableCommands[1].handleEvent;
+                const commands = enableCommands[0].commands;
+
+                const perPage = 10;
+                const totalPages = Math.ceil(commands.length / perPage);
+                const page = !isNaN(input) ? Math.max(1, Math.min(parseInt(input), totalPages)) : 1;
+                const start = (page - 1) * perPage;
+                const end = start + perPage;
+
+                if (!input || !isNaN(input)) {
+                        let helpMessage = `✦ ━━ ✦ 𝑩𝑶𝑻 𝑯𝑬𝑳𝑷 ✦ ━━ ✦\n\n`;
+                        helpMessage += `📜 Command List (Page ${page}/${totalPages}) 📜\n\n`;
+
+                        for (let i = start; i < Math.min(end, commands.length); i++) {
+                                helpMessage += `╭〔${i + 1}〕 ${prefix}${commands[i]}\n╰───────────────\n`;
+                        }
+
+                        helpMessage += `\n➡️ Type: ${prefix}help [page] to view other pages\n`;
+                        helpMessage += `➡️ Type: ${prefix}help [command] for details`;
+
+                        if (page === 1 && eventCommands.length) {
+                                helpMessage += `\n\n📌 Event List:\n`;
+                                eventCommands.forEach((eventCommand, index) => {
+                                        helpMessage += `╭〔E${index + 1}〕 ${prefix}${eventCommand}\n╰───────────────\n`;
+                                });
+                        }
+
+                        return api.sendMessage(helpMessage, event.threadID, event.messageID);
+                } else {
+                        const command = [...Utils.handleEvent, ...Utils.commands].find(([key]) =>
+                                key.includes(input?.toLowerCase())
+                        )?.[1];
+
+                        if (command) {
+                                const {
+                                        name,
+                                        version,
+                                        role,
+                                        aliases = [],
+                                        description,
+                                        usage,
+                                        credits,
+                                        cooldown,
+                                        hasPrefix
+                                } = command;
+
+                                const roleMessage =
+                                        role !== undefined
+                                                ? (role === 0
+                                                        ? '➛ Permission: user'
+                                                        : role === 1
+                                                                ? '➛ Permission: admin'
+                                                                : role === 2
+                                                                        ? '➛ Permission: thread Admin'
+                                                                        : role === 3
+                                                                                ? '➛ Permission: super Admin'
+                                                                                : '')
+                                                : '';
+
+                                const aliasesMessage = aliases.length ? `➛ Aliases: ${aliases.join(', ')}\n` : '';
+                                const descriptionMessage = description ? `➛ Description: ${description}\n` : '';
+                                const usageMessage = usage ? `➛ Usage: ${usage}\n` : '';
+                                const creditsMessage = credits ? `➛ Credits: ${credits}\n` : '';
+                                const versionMessage = version ? `➛ Version: ${version}\n` : '';
+                                const cooldownMessage = cooldown ? `➛ Cooldown: ${cooldown} second(s)\n` : '';
+
+                                const message = `「 Command Info 」\n\n➛ Name: ${name}\n${versionMessage}${roleMessage}\n${aliasesMessage}${descriptionMessage}${usageMessage}${creditsMessage}${cooldownMessage}`;
+                                return api.sendMessage(message, event.threadID, event.messageID);
+                        } else {
+                                return api.sendMessage('❌ Command not found.', event.threadID, event.messageID);
+                        }
+                }
+        } catch (error) {
+                console.log(error);
+        }
 };
 
-
-module.exports.handleEvent = function ({ api, event, getText, botname, prefix }) {
-  const { commands } = global.client;
-  const { threadID, messageID, body } = event;  
-
-  if (!body || typeof body == "undefined" || body.indexOf("help") != 0)
-    return;
-  const splitBody = body.slice(body.indexOf("help")).trim().split(/\s+/);
-  if (splitBody.length == 1 || !commands.has(splitBody[1].toLowerCase())) return;
-  const threadSetting = global.data.threadData.get(parseInt(threadID)) || {};
-  const command = commands.get(splitBody[1].toLowerCase());
-  return api.sendMessage(
-    getText(
-      "moduleInfo",
-      command.config.name,
-      command.config.description,
-      `${prefix}${command.config.name} ${
-        command.config.usages ? command.config.usages : ""
-      }`,
-      command.config.category,
-      command.config.cooldowns,
-      command.config.permission === 0
-        ? getText("user")
-        : command.config.permission === 1
-        ? getText("adminGroup")
-        : getText("adminBot"),
-      command.config.credits
-    ),
-    threadID,
-    messageID
-  );
-};
-
-module.exports.run = async function ({ api, event, args, getText, botname, prefix }) {
-  const { commands } = global.client;
-  const { threadID, messageID } = event;
-  const command = commands.get((args[0] || "").toLowerCase());
-  const threadSetting = global.data.threadData.get(parseInt(threadID)) || {};
-  const autoUnsend  = true;
-  const delayUnsend = 60;
-  
-  if (!command) {
-    const commandList = Array.from(commands.values());
-    const categories = new Set(commandList.map((cmd) => cmd.config.category.toLowerCase()));
-    const categoryCount = categories.size;
-
-    const categoryNames = Array.from(categories);
-    const itemsPerPage = 10;
-    const totalPages = Math.ceil(categoryNames.length / itemsPerPage);
-
-    let currentPage = 1;
-    if (args[0]) {
-      const parsedPage = parseInt(args[0]);
-      if (
-        !isNaN(parsedPage) &&
-        parsedPage >= 1 &&
-        parsedPage <= totalPages
-      ) {
-        currentPage = parsedPage;
-      } else {
-        return api.sendMessage(
-          `oops, you went too far. please choose a page between 1 and ${totalPages}.`,
-          threadID,
-          messageID
-        );
-      }
-    }
-    const startIdx = (currentPage - 1) * itemsPerPage;
-    const endIdx = startIdx + itemsPerPage;
-    const visibleCategories = categoryNames.slice(startIdx, endIdx);
-
-    let msg = "";
-    for (let i = 0; i < visibleCategories.length; i++) {
-      const category = visibleCategories[i];
-      const categoryCommands = commandList.filter(
-        (cmd) =>
-          cmd.config.category.toLowerCase() === category
-      );
-      const commandNames = categoryCommands.map((cmd) => cmd.config.name);
-      const numberFont = [
-        "1",
-        "2",
-        "3",
-        "4",
-        "5",
-        "6",
-        "7",
-        "8",
-        "9",
-        "10",
-      ];
-      msg += `${
-        category.charAt(0).toUpperCase() + category.slice(1).toUpperCase()
-      } CATEGORY\n${commandNames.join(", ")}\n\n`
-    }
-    const numberFontPage = [
-      "1",
-      "2",
-      "3",
-      "4",
-      "5",
-      "6",
-      "7",
-      "8",
-      "9",
-      "10",
-      "11",
-      "12",
-      "13",
-      "14",
-      "15",
-      "16",
-      "17",
-      "18",
-      "19",
-      "20",
-    ];
-    msg += `PAGE ${numberFontPage[currentPage - 1]} OF ${
-      numberFontPage[totalPages - 1]
-    }\n\n`;
-    msg += getText("helpList", commands.size, categoryCount, prefix);
-    const msgg = {
-  body: `EXISTING COMMANDS AND CATEGORIES OF ${botname.toUpperCase()} AI\n\n` + msg + `\n\n`
-    };
-
-    const sentMessage = await api.sendMessage(msgg, threadID, async (error, info) => {
-			if (autoUnsend) {
-				await new Promise(resolve => setTimeout(resolve, delayUnsend * 500));
-				return api.unsendMessage(info.messageID);
-			} else return;
-		}, messageID);
-  } else {
-    return api.sendMessage(
-      getText(
-        "moduleInfo",
-        command.config.name,
-        command.config.description,
-        `${prefix}${command.config.name} ${
-          command.config.usages ? command.config.usages : ""
-        }`,
-        command.config.category,
-        command.config.cooldowns,
-        command.config.permission === 0
-          ? getText("user")
-          : command.config.permission === 1
-          ? getText("adminGroup")
-          : getText("adminBot"),
-        command.config.credits
-      ),
-      threadID, async (error, info) => {
-			if (autoUnsend) {
-				await new Promise(resolve => setTimeout(resolve, delayUnsend * 500));
-				return api.unsendMessage(info.messageID);
-			} else return;
-		}, messageID);
-  }
+module.exports.handleEvent = async function ({ api, event, prefix }) {
+        const { threadID, messageID, body } = event;
+        const message = prefix ? 'This is my prefix: ' + prefix : "𝗠𝘆 𝗽𝗿𝗲𝗳𝗶𝘅 𝗶𝘀...";
+        if (body?.toLowerCase().startsWith('prefix')) {
+                api.sendMessage(message, threadID, messageID);
+        }
 };
