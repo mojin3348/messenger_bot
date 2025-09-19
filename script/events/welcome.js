@@ -8,7 +8,8 @@ module.exports.config = {
     role: 0,
     description: "Welcome new members",
     credits: "ARI",
-    hasEvent: true
+    hasEvent: true,
+    eventType: ["log:subscribe"] 
 };
 
 try {
