@@ -7,11 +7,7 @@ module.exports.config = {
   eventType: ["log:subscribe"],    
   version: "1.0.0",
   credits: "ARI",
-  description: "Welcome new members with canvas",
-  dependencies: {
-    "fs-extra": "",                
-    "canvas": ""
-  }
+  description: "Welcome new members with canvas"
 };
 
 try {
