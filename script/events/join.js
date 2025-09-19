@@ -1,174 +1,170 @@
-const Canvas = require("canvas");
-const axios = require("axios");
-const fs = require("fs-extra");
-const path = require("path");
+module.exports.config = {
+  name: "join",
+  eventType: ['log:subscribe'],
+  version: "1.0.0",
+  credits: "Mirai-Team", // FIXED BY YAN MAGLINTE
+  description: "GROUP UPDATE NOTIFICATION"
+};
 
-try {
-	Canvas.registerFont(path.join(__dirname, "fonts", "Poppins-Bold.ttf"), { family: "PoppinsBold" });
-	Canvas.registerFont(path.join(__dirname, "fonts", "Poppins-Regular.ttf"), { family: "Poppins" });
-	Canvas.registerFont(path.join(__dirname, "fonts", "Orbitron-Bold.ttf"), { family: "Orbitron" });
-} catch (e) {
-	console.log("⚠️ Fonts not found, defaulting to Sans");
+const ADMIN = 'YOUR_NAME';
+const FB_LINK = 'YOUR_FACEBOOK_LINK';
+
+const fs = require('fs-extra');
+const { loadImage, createCanvas, registerFont } = require("canvas");
+const request = require('request');
+//const { join } = require('path');
+const axios = require('axios');
+const jimp = require("jimp")
+const fontlink = 'https://drive.google.com/u/0/uc?id=1ZwFqYB-x6S9MjPfYm3t3SP1joohGl4iw&export=download'
+let PRFX = `${global.config.PREFIX}`;
+
+module.exports.circle = async (image) => {
+  image = await jimp.read(image);
+  image.circle();
+  return await image.getBufferAsync("image/png");
 }
 
-module.exports.config = {
-	name: "join",
-	eventType: ["log:subscribe"],
-	version: "2.2.0",
-	credits: "ari",
-	description: "join and welcome notification with cyan canvas card",
-	dependencies: {
-		"fs-extra": "",
-		"axios": "",
-		"canvas": ""
-	}
-};
+let suffix;
 
-module.exports.run = async function({ api, event, Threads, botname, prefix }) {
-	const { threadID } = event;
-	const data = (await Threads.getData(event.threadID)).data || {};
-	const checkban = data.banOut || [];
-	const botID = await api.getCurrentUserID();
+module.exports.run = async function({ api, event, Users }) {
+  var fullYear = global.client.getTime("fullYear");
+  var getHours = await global.client.getTime("hours");
+  var session = `${getHours < 3 ? "midnight" : getHours < 8 ? "Early morning" : getHours < 12 ? "noon" : getHours < 17 ? "afternoon" : getHours < 23 ? "evening" : "midnight"}`
+  const moment = require("moment-timezone");
+  var thu = moment.tz('Asia/Manila').format('dddd');
+  if (thu == 'Sunday') thu = 'Sunday'
+  if (thu == 'Monday') thu = 'Monday'
+  if (thu == 'Tuesday') thu = 'Tuesday'
+  if (thu == 'Wednesday') thu = 'Wednesday'
+  if (thu == "Thursday") thu = 'Thursday'
+  if (thu == 'Friday') thu = 'Friday'
+  if (thu == 'Saturday') thu = 'Saturday'
+  const time = moment.tz("Asia/Manila").format("HH:mm:ss - DD/MM/YYYY");
+  const hours = moment.tz("Asia/Manila").format("HH");
+  const { commands } = global.client;
+  const { threadID } = event;
+  let threadInfo = await api.getThreadInfo(event.threadID);
+  let threadName = threadInfo.threadName;
+  if (!event.logMessageData.addedParticipants || !Array.isArray(event.logMessageData.addedParticipants)) {
+    return;
+  }
+  if (event.logMessageData.addedParticipants && Array.isArray(event.logMessageData.addedParticipants) && event.logMessageData.addedParticipants.some(i => i.userFbId == api.getCurrentUserID())) {
+    //api.changeNickname(`𝗕𝗢𝗧 ${(!global.config.BOTNAME) ? "Buddy" : global.config.BOTNAME}`, threadID, api.getCurrentUserID());
+    
+    let gifUrl = 'https://i.imgur.com/4HMupHz.gif';
+let gifPath = __dirname + '/cache/join/join.gif';
 
-	if (checkban.includes(checkban[0])) return;
+axios.get(gifUrl, { responseType: 'arraybuffer' })
+.then(response => {
+    fs.writeFileSync(gifPath, response.data);
+    return api.sendMessage("Hey There!", event.threadID, () => api.sendMessage({ body: `✅ Group Connection in ${threadName} at ${session} success! \n\n➭ Current Commands: ${commands.size}\n➭ Bot Prefix: ${global.config.PREFIX}\n➭ Version: ${global.config.version}\n➭ Admin: ‹${ADMIN}›\n➭ Facebook: ‹${FB_LINK}›\n➭ Use ${PRFX}help to view command details\n➭ Added bot at: ⟨ ${time} ⟩〈 ${thu} 〉`, attachment: fs.createReadStream(gifPath)}, threadID));
+})
+.catch(error => {
+    console.error(error);
+});
+  }
+  else {
+    try {
+      if (!fs.existsSync(__dirname + `/cache/font/Semi.ttf`)) {
+        let getfont = (await axios.get(fontlink, { responseType: "arraybuffer" })).data;
+        fs.writeFileSync(__dirname + `/cache/font/Semi.ttf`, Buffer.from(getfont, "utf-8"));
+      };
+      const { createReadStream, existsSync, mkdirSync, readdirSync } = global.nodemodule["fs-extra"];
+      let { threadName, participantIDs } = await api.getThreadInfo(threadID);
+      const threadData = global.data.threadData.get(parseInt(threadID)) || {};
+      var mentions = [], nameArray = [], memLength = [], iduser = [], i = 0;
+      var abx = [];
+      for (id in event.logMessageData.addedParticipants) {
+        const userName = event.logMessageData.addedParticipants[id].fullName; iduser.push(event.logMessageData.addedParticipants[id].userFbId.toString());
+        nameArray.push(userName);
+        mentions.push({ tag: userName, id: event.senderID });
+        memLength.push(participantIDs.length - i++);
+        console.log(userName)
+      }
+      // console.log(event.logMessageData.addedParticipants)
+      var id = [];
+      for (let o = 0; o < event.logMessageData.addedParticipants.length; o++) {
+        let pathImg = __dirname + `/cache/join/${o}.png`;
+        let pathAva = __dirname + `/cache/join/avt.png`;
+        let avtAnime = (await axios.get(encodeURI(
+          `https://graph.facebook.com/${event.logMessageData.addedParticipants[o].userFbId}/picture?height=720&width=720&access_token=6628568379%7Cc1e620fa708a1d5696fb991c1bde5662`), { responseType: "arraybuffer" })).data;
+        var ok = [
+          'https://i.imgur.com/dDSh0wc.jpeg',
+          'https://i.imgur.com/UucSRWJ.jpeg',
+          'https://i.imgur.com/OYzHKNE.jpeg',
+          'https://i.imgur.com/V5L9dPi.jpeg',
+          'https://i.imgur.com/M7HEAMA.jpeg'
+        ]
+        let background = (await axios.get(encodeURI(`${ok[Math.floor(Math.random() * ok.length)]}`), { responseType: "arraybuffer", })).data;
+        fs.writeFileSync(pathAva, Buffer.from(avtAnime, "utf-8"));
+        fs.writeFileSync(pathImg, Buffer.from(background, "utf-8"));
+        var avatar = await this.circle(pathAva);
+        let baseImage = await loadImage(pathImg);
+        let baseAva = await loadImage(avatar);
+        registerFont(__dirname + `/cache/font/Semi.ttf`, {
+          family: "Semi"
+        });
+        let canvas = createCanvas(1902, 1082);
+        console.log(canvas.width, canvas.height)
+        let ctx = canvas.getContext("2d");
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(baseImage, 0, 0, canvas.width, canvas.height);
+        ctx.drawImage(baseAva, canvas.width / 2 - 188, canvas.height / 2 - 375, 375, 355);
+        ctx.fillStyle = "#FFF";
+        ctx.textAlign = "center";
+        ctx.font = `155px Semi`;
+        ctx.fillText(`${event.logMessageData.addedParticipants[o].fullName}`, canvas.width / 2 + 20, canvas.height / 2 + 100);
+        ctx.save();
+        ctx.font = `75px Semi`;
+        ctx.fillText(`Welcome to ${threadName}`, canvas.width / 2 - 15, canvas.height / 2 + 235)
+        const number = participantIDs.length - o;
 
-	if (event.logMessageData.addedParticipants.some(i => i.userFbId == botID)) {
-		api.changeNickname(`${botname} ✨`, threadID, botID);
-		return api.sendMessage(
-			`🤖 Connected successfully!\n\n` +
-			`🔹 Bot Name: ${botname}\n` +
-			`🔹 Prefix: ${prefix}\n\n` +
-			`📊 Data:\n👥 Users: ${global.data.allUserID.length}\n💬 Groups: ${global.data.allThreadID.get(botID).length}\n\n` +
-			`💡 How to use:\n${prefix}help → command list\nai [ prompt ] → no prefix\ntalk [ text ] → no prefix\n\n🚀 Autobot is ready!`,
-			threadID
-		);
-	} else {
-		try {
-			const { threadName, participantIDs } = await api.getThreadInfo(threadID);
-			const threadData = global.data.threadData.get(parseInt(threadID)) || {};
+        if (number === 11 || number === 12 || number === 13) {
+          suffix = "th";
+        } else {
+          const lastDigit = number % 10;
+          switch (lastDigit) {
+            case 1:
+              suffix = "st";
+              break;
+            case 2:
+              suffix = "nd";
+              break;
+            case 3:
+              suffix = "rd";
+              break;
+            default:
+              suffix = "th";
+              break;
+          }
+        }
 
-			for (let user of event.logMessageData.addedParticipants) {
-				try {
-					const avatar = await axios.get(
-						`https://graph.facebook.com/${user.userFbId}/picture?width=512&height=512`,
-						{ responseType: "arraybuffer" }
-					);
+        ctx.fillText(`You are the ${number}${suffix} member of this group`, canvas.width / 2 - 15, canvas.height / 2 + 350);
+        ctx.restore();
+        const imageBuffer = canvas.toBuffer();
+        fs.writeFileSync(pathImg, imageBuffer);
+        abx.push(fs.createReadStream(__dirname + `/cache/join/${o}.png`))
+      }
+      memLength.sort((a, b) => a - b);
+      (typeof threadData.customJoin == "undefined") ? msg = `🌟 Welcome new member {name} to the group {threadName}\n→ URL Profile:\nhttps://www.facebook.com/profile.php?id={iduser}\n→ {type} are the group's {soThanhVien}${suffix} member\n→ Added to the group by: {author}\n→ Added by facebook link: https://www.facebook.com/profile.php?id={uidAuthor}\n─────────────────\n[ {time} - {thu} ]` : msg = threadData.customJoin;
+      var nameAuthor = await Users.getNameUser(event.author)
+      msg = msg
+        .replace(/\{iduser}/g, iduser.join(', '))
+        .replace(/\{name}/g, nameArray.join(', '))
+        .replace(/\{type}/g, (memLength.length > 1) ? 'You' : 'You')
+        .replace(/\{soThanhVien}/g, memLength.join(', '))
+        .replace(/\{threadName}/g, threadName)
+        .replace(/\{author}/g, nameAuthor)
+        .replace(/\{uidAuthor}/g, event.author)
+        .replace(/\{buoi}/g, session)
+        .replace(/\{time}/g, time)
+        .replace(/\{thu}/g, thu);
 
-					const canvas = Canvas.createCanvas(1000, 400);
-					const ctx = canvas.getContext("2d");
-          
-					const gradient = ctx.createLinearGradient(0, 0, 1000, 400);
-					gradient.addColorStop(0, "#001f2d");
-					gradient.addColorStop(0.5, "#003b4d");
-					gradient.addColorStop(1, "#005b73");
-					ctx.fillStyle = gradient;
-					ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-					for (let i = 0; i < 80; i++) {
-						const x = Math.random() * canvas.width;
-						const y = Math.random() * canvas.height;
-						const radius = Math.random() * 3;
-						ctx.beginPath();
-						ctx.fillStyle = `rgba(0, 255, 255, ${Math.random()})`;
-						ctx.shadowColor = "#00ffff";
-						ctx.shadowBlur = 20;
-						ctx.arc(x, y, radius, 0, Math.PI * 2);
-						ctx.fill();
-						ctx.shadowBlur = 0;
-					}
-
-					ctx.lineWidth = 0.5;
-					ctx.strokeStyle = "rgba(0,255,255,0.08)";
-					for (let i = 0; i < canvas.width; i += 40) {
-						ctx.beginPath();
-						ctx.moveTo(i, 0);
-						ctx.lineTo(i, canvas.height);
-						ctx.stroke();
-					}
-					for (let j = 0; j < canvas.height; j += 40) {
-						ctx.beginPath();
-						ctx.moveTo(0, j);
-						ctx.lineTo(canvas.width, j);
-						ctx.stroke();
-					}
-
-					const avatarImg = await Canvas.loadImage(avatar.data);
-					ctx.save();
-					ctx.beginPath();
-					ctx.arc(200, 200, 120, 0, Math.PI * 2, true);
-					ctx.closePath();
-					ctx.clip();
-					ctx.drawImage(avatarImg, 80, 80, 240, 240);
-					ctx.restore();
-
-					ctx.beginPath();
-					ctx.arc(200, 200, 122, 0, Math.PI * 2);
-					ctx.strokeStyle = "#00ffff";
-					ctx.lineWidth = 6;
-					ctx.shadowColor = "#00ffff";
-					ctx.shadowBlur = 25;
-					ctx.stroke();
-					ctx.shadowBlur = 0;
-
-					ctx.fillStyle = "#ffffff";
-					ctx.font = "bold 45px PoppinsBold, Sans";
-					ctx.fillText("✨ Welcome to the Group ✨", 370, 140);
-
-					ctx.font = "bold 60px Orbitron, Sans";
-					ctx.fillStyle = "#00ffff";
-					ctx.shadowColor = "#00ffff";
-					ctx.shadowBlur = 20;
-					ctx.fillText(user.fullName, 370, 230);
-					ctx.shadowBlur = 0;
-
-					ctx.font = "28px Poppins, Sans";
-					ctx.fillStyle = "#aeefff";
-					ctx.fillText(`Group: ${threadName}`, 370, 290);
-
-					ctx.font = "28px Poppins, Sans";
-					ctx.fillStyle = "#aeefff";
-					ctx.fillText(`Members: ${participantIDs.length}`, 370, 330);
-
-					ctx.beginPath();
-					ctx.moveTo(350, 350);
-					ctx.lineTo(950, 350);
-					ctx.strokeStyle = "#00ffff";
-					ctx.lineWidth = 3;
-					ctx.shadowColor = "#00ffff";
-					ctx.shadowBlur = 15;
-					ctx.stroke();
-					ctx.shadowBlur = 0;
-
-					const imgPath = path.join(__dirname, `cache/welcome_${user.userFbId}.png`);
-					fs.writeFileSync(imgPath, canvas.toBuffer());
-
-					let msg = threadData.customJoin || 
-					`💎 Welcome {name}! 💎\n\n` +
-					`👋 Hello {type}, thank you for joining to [ {threadName} ]\n` +
-					`🌊 You are now part of our family. Enjoy and have fun!\n\n` +
-					`📌 Member Count: {soThanhVien}`;
-
-					msg = msg
-						.replace(/\{name}/g, user.fullName)
-						.replace(/\{type}/g, "you")
-						.replace(/\{soThanhVien}/g, participantIDs.length)
-						.replace(/\{threadName}/g, threadName);
-
-					api.sendMessage(
-						{
-							body: msg,
-							attachment: fs.createReadStream(imgPath)
-						},
-						threadID,
-						() => fs.unlinkSync(imgPath)
-					);
-
-				} catch (err) {
-					console.error("❌ Error creating cyan welcome card:", err);
-				}
-			}
-		} catch (e) { 
-			return console.log(e); 
-		}
-	}
-};
+      var formPush = { body: msg, attachment: abx, mentions }
+      api.sendMessage(formPush, threadID);
+      for (let ii = 0; ii < parseInt(id.length); ii++) {
+        fs.unlinkSync(__dirname + `/cache/join/${ii}.png`)
+      }
+    } catch (e) { return console.log(e) };
+  }
+}
