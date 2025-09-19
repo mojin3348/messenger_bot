@@ -1,29 +1,27 @@
-// ryuko
-
-console.clear();
 const { spawn } = require("child_process");
-const chalk = require('chalk');
-const fs = require('fs-extra')
 const path = require('path');
 
-function startBot(message) {
-    (message) ? console.info(chalk.blue(message.toUpperCase())) : "";
+const SCRIPT_FILE = "auto.js";
+const SCRIPT_PATH = path.join(__dirname, SCRIPT_FILE);
 
-  const child = spawn("node", ["--trace-warnings", "--async-stack-traces", "--no-warnings", "main.js"], {
+
+function start() {
+    const main = spawn("node", [SCRIPT_PATH], {
         cwd: __dirname,
         stdio: "inherit",
         shell: true
     });
-  child.on("close", (codeExit) => {
-        if (codeExit != 0 || global.countRestart && global.countRestart < 5) {
-            startBot("restarting server");
-            global.countRestart += 1;
-            return;
-        } else return;
-    });
 
-  child.on("error", function(error) {
-    console.error("an error occurred : " + JSON.stringify(error));
-  });
-};
-startBot();
+    main.on("close", (exitCode) => {
+        if (exitCode === 0) {
+            console.log("Main process exited with code 0");
+        } else if (exitCode === 1) {
+            console.log("Main process exited with code 1. Restarting...");
+            start();
+        }  else {
+            console.error(`Main process exited with code ${exitCode}`);
+        }
+    });
+}
+
+start();
